@@ -85,6 +85,7 @@ const _quickSave = 'ls_quick_save'; // a QuickSaveMode; was a bool until storage
 const _receivePin = 'ls_receive_pin';
 const _autoFinish = 'ls_auto_finish';
 const _minimizeToTray = 'ls_minimize_to_tray';
+const _backgroundNotifications = 'ls_background_notifications';
 const _https = 'ls_https';
 const _sendMode = 'ls_send_mode';
 const _enableAnimations = 'ls_enable_animations';
@@ -483,6 +484,12 @@ class PersistenceService {
 
   Future<void> setAutoFinish(bool autoFinish) async {
     await _prefs.setBool(_autoFinish, autoFinish);
+  }
+
+  bool isBackgroundNotifications() => _prefs.getBool(_backgroundNotifications) ?? false;
+
+  Future<void> setBackgroundNotifications(bool enabled) async {
+    await _prefs.setBool(_backgroundNotifications, enabled);
   }
 
   bool isMinimizeToTray() {

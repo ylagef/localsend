@@ -872,6 +872,20 @@ class _Translations$settingsTab$general$es_ES extends Translations$settingsTab$g
   @override
   String get minimizeToTray => 'Cerrar: Minimizar ventana';
   @override
+  String get backgroundNotifications => 'Avisos flotantes al recibir';
+  @override
+  String get backgroundNotificationsHint => 'Acciones rápidas mientras trabajas. Al cerrar la ventana, LocalSend sigue en la barra de menús.';
+  @override
+  String get notificationDenied => 'El aviso flotante no está disponible. Vuelve a intentarlo.';
+  @override
+  String notificationPendingTitle({required Object alias}) => '${alias} quiere enviarte archivos';
+  @override
+  String get notificationPendingBody => 'Recibe estos archivos sin dejar lo que estás haciendo.';
+  @override
+  String notificationDoneTitle({required Object count, required Object alias}) => '${count} archivos recibidos de ${alias}';
+  @override
+  String get notificationDoneBody => 'Tus archivos están listos.';
+  @override
   String get launchAtStartup => 'Inicio automático';
   @override
   String get launchMinimized => 'Inicio automático: Iniciar minimizado';
@@ -879,6 +893,34 @@ class _Translations$settingsTab$general$es_ES extends Translations$settingsTab$g
   String get showInContextMenu => 'Mostrar LocalSend en el menú contextual';
   @override
   String get animations => 'Animaciones';
+  @override
+  String get alertAccept => 'Recibir';
+  @override
+  String get alertReject => 'Rechazar';
+  @override
+  String get alertCopy => 'Copiar imagen';
+  @override
+  String get alertOpen => 'Abrir';
+  @override
+  String get alertHistory => 'Ver envío';
+  @override
+  String get alertDismiss => 'Cerrar aviso';
+  @override
+  String get alertCopied => 'Imagen copiada';
+  @override
+  String get alertUnavailable => 'Este envío ya no está disponible.';
+  @override
+  String get alertActionFailed => 'No se ha podido completar la acción. Reinténtalo o abre LocalSend.';
+  @override
+  String alertReceiving({required Object alias}) => 'Recibiendo de ${alias}';
+  @override
+  String get alertReceivingBody => 'Puedes seguir con lo tuyo.';
+  @override
+  String get alertError => 'Envío incompleto';
+  @override
+  String get alertErrorBody => 'Abre LocalSend para revisar los archivos fallidos.';
+  @override
+  String alertDoneSingleTitle({required Object alias}) => 'Recibido de ${alias}';
 }
 
 // Path: settingsTab.receive
@@ -1040,6 +1082,8 @@ class _Translations$receiveHistoryPage$entryActions$es_ES extends Translations$r
   // Translations
   @override
   String get open => 'Abrir archivo';
+  @override
+  String get copyImage => 'Copiar imagen';
   @override
   String get showInFolder => 'Mostrar en carpeta';
   @override

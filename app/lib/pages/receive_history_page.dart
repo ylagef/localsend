@@ -8,9 +8,11 @@ import 'package:localsend_app/pages/receive_page.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/directories.dart';
+import 'package:localsend_app/util/native/image_clipboard.dart';
 import 'package:localsend_app/util/native/open_file.dart';
 import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/file_info_dialog.dart';
 import 'package:localsend_app/widget/dialogs/history_clear_dialog.dart';
 import 'package:localsend_app/widget/file_thumbnail.dart';
@@ -24,6 +26,7 @@ import 'package:routerino/routerino.dart';
 
 enum _EntryOption {
   open,
+  copyImage,
   showInFolder,
   info,
   delete
@@ -32,6 +35,7 @@ enum _EntryOption {
   String get label {
     return switch (this) {
       _EntryOption.open => t.receiveHistoryPage.entryActions.open,
+      _EntryOption.copyImage => t.receiveHistoryPage.entryActions.copyImage,
       _EntryOption.showInFolder => t.receiveHistoryPage.entryActions.showInFolder,
       _EntryOption.info => t.receiveHistoryPage.entryActions.info,
       _EntryOption.delete => t.receiveHistoryPage.entryActions.deleteFromHistory,
@@ -39,11 +43,32 @@ enum _EntryOption {
   }
 }
 
-const _optionsAll = _EntryOption.values;
+final _optionsAll = _EntryOption.values.where((option) => option != _EntryOption.copyImage).toList();
 final _optionsWithoutOpen = [_EntryOption.info, _EntryOption.delete];
 
-class ReceiveHistoryPage extends StatelessWidget {
+class ReceiveHistoryPage extends StatefulWidget {
   const ReceiveHistoryPage({super.key});
+
+  @override
+  State<ReceiveHistoryPage> createState() => _ReceiveHistoryPageState();
+}
+
+class _ReceiveHistoryPageState extends State<ReceiveHistoryPage> {
+  final Set<String> _copyingImages = {};
+
+  Future<void> _copyImage(ReceiveHistoryEntry entry) async {
+    if (!_copyingImages.add(entry.id)) return;
+    setState(() {});
+    try {
+      await copyReceivedImageToClipboard(entry.path!);
+      if (mounted) context.showSnackBar(t.general.copiedToClipboard);
+    } catch (_) {
+      if (mounted) context.showSnackBar(t.general.error);
+    } finally {
+      _copyingImages.remove(entry.id);
+      if (mounted) setState(() {});
+    }
+  }
 
   Future<void> _openFile(
     BuildContext context,
@@ -203,6 +228,9 @@ class ReceiveHistoryPage extends StatelessWidget {
                             case _EntryOption.open:
                               await _openFile(context, entry, context.redux(receiveHistoryProvider));
                               break;
+                            case _EntryOption.copyImage:
+                              await _copyImage(entry);
+                              break;
                             case _EntryOption.showInFolder:
                               if (entry.path != null) {
                                 await openFolder(
@@ -225,9 +253,15 @@ class ReceiveHistoryPage extends StatelessWidget {
                           }
                         },
                         itemBuilder: (BuildContext context) {
-                          return (entry.path != null ? _optionsAll : _optionsWithoutOpen).map((e) {
+                          final options = [
+                            if (entry.path != null) _EntryOption.open,
+                            if (canCopyReceivedImage(fileType: entry.fileType, path: entry.path, isMacOS: Platform.isMacOS)) _EntryOption.copyImage,
+                            ...(entry.path != null ? _optionsAll.where((option) => option != _EntryOption.open) : _optionsWithoutOpen),
+                          ];
+                          return options.map((e) {
                             return PopupMenuItem<_EntryOption>(
                               value: e,
+                              enabled: e != _EntryOption.copyImage || !_copyingImages.contains(entry.id),
                               child: Text(e.label),
                             );
                           }).toList();

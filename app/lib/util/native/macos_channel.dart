@@ -84,7 +84,10 @@ Stream<List<String>> get pendingStringsStream => _pendingStringsStreamController
 
 /// Sets up the method call handler.
 /// Any call from swift native code is dropped until this method is called.
-Future<void> setupMethodCallHandler() async {
+Future<void> setupMethodCallHandler({
+  Future<void> Function(String sessionId, String kind)? onNotificationClicked,
+  Future<Map<String, dynamic>> Function(String, String, String)? onReceiveAlertAction,
+}) async {
   _methodChannel.setMethodCallHandler((call) async {
     switch (call.method) {
       case 'onPendingFiles':
@@ -92,6 +95,23 @@ Future<void> setupMethodCallHandler() async {
         break;
       case 'onPendingStrings':
         _pendingStringsStreamController.add((call.arguments as List).cast<String>());
+        break;
+      case 'onReceiveAlertAction':
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final sessionId = args['sessionId'];
+        final kind = args['kind'];
+        final action = args['action'];
+        if (sessionId is String && kind is String && action is String) {
+          return await onReceiveAlertAction?.call(sessionId, kind, action);
+        }
+        return {'success': false};
+      case 'onNotificationClicked':
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final sessionId = args['sessionId'];
+        final kind = args['kind'];
+        if (sessionId is String && kind is String) {
+          await onNotificationClicked?.call(sessionId, kind);
+        }
         break;
       case 'showLocalSendFromMenuBar':
         await showFromTray();

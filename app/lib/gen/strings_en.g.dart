@@ -1091,6 +1091,27 @@ class Translations$settingsTab$general$en {
   /// en: 'Minimize to the System Tray/Menu Bar when closing'
   String get minimizeToTray => 'Minimize to the System Tray/Menu Bar when closing';
 
+  /// en: 'Floating receive alerts'
+  String get backgroundNotifications => 'Floating receive alerts';
+
+  /// en: 'Quick actions while you work. Closing the window keeps LocalSend in the menu bar.'
+  String get backgroundNotificationsHint => 'Quick actions while you work. Closing the window keeps LocalSend in the menu bar.';
+
+  /// en: 'The floating alert is unavailable. Try again.'
+  String get notificationDenied => 'The floating alert is unavailable. Try again.';
+
+  /// en: '{alias} wants to send you files'
+  String notificationPendingTitle({required Object alias}) => '${alias} wants to send you files';
+
+  /// en: 'Receive these files without leaving what you are doing.'
+  String get notificationPendingBody => 'Receive these files without leaving what you are doing.';
+
+  /// en: 'Received {count} files from {alias}'
+  String notificationDoneTitle({required Object count, required Object alias}) => 'Received ${count} files from ${alias}';
+
+  /// en: 'Your files are ready.'
+  String get notificationDoneBody => 'Your files are ready.';
+
   /// en: 'Autostart after login'
   String get launchAtStartup => 'Autostart after login';
 
@@ -1102,6 +1123,48 @@ class Translations$settingsTab$general$en {
 
   /// en: 'Animations'
   String get animations => 'Animations';
+
+  /// en: 'Receive'
+  String get alertAccept => 'Receive';
+
+  /// en: 'Decline'
+  String get alertReject => 'Decline';
+
+  /// en: 'Copy image'
+  String get alertCopy => 'Copy image';
+
+  /// en: 'Open'
+  String get alertOpen => 'Open';
+
+  /// en: 'View transfer'
+  String get alertHistory => 'View transfer';
+
+  /// en: 'Dismiss'
+  String get alertDismiss => 'Dismiss';
+
+  /// en: 'Image copied'
+  String get alertCopied => 'Image copied';
+
+  /// en: 'This transfer is no longer available.'
+  String get alertUnavailable => 'This transfer is no longer available.';
+
+  /// en: 'Could not complete the action. Try again or open LocalSend.'
+  String get alertActionFailed => 'Could not complete the action. Try again or open LocalSend.';
+
+  /// en: 'Receiving from {alias}'
+  String alertReceiving({required Object alias}) => 'Receiving from ${alias}';
+
+  /// en: 'You can keep working.'
+  String get alertReceivingBody => 'You can keep working.';
+
+  /// en: 'Transfer incomplete'
+  String get alertError => 'Transfer incomplete';
+
+  /// en: 'Open LocalSend to review the failed files.'
+  String get alertErrorBody => 'Open LocalSend to review the failed files.';
+
+  /// en: 'Received from {alias}'
+  String alertDoneSingleTitle({required Object alias}) => 'Received from ${alias}';
 }
 
 // Path: settingsTab.receive
@@ -1304,6 +1367,9 @@ class Translations$receiveHistoryPage$entryActions$en {
 
   /// en: 'Open file'
   String get open => 'Open file';
+
+  /// en: 'Copy image'
+  String get copyImage => 'Copy image';
 
   /// en: 'Show in folder'
   String get showInFolder => 'Show in folder';

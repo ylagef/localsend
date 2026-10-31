@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "name": "localsend-personal",
+  "branch": "main",
+  "repository": "https://github.com/ylagef/localsend.git",
+  "versionFile": "fork-version.json",
+  "versionFiles": [],
+  "changelog": "CHANGELOG.personal.md",
+  "bootstrapCommit": "92e133aa43869e94d394fd04fa70c50a0f796a64",
+  "checks": [
+    [
+      "python3",
+      "scripts/test-personal-release.py"
+    ],
+    [
+      "bash",
+      "scripts/check-personal.sh"
+    ]
+  ],
+  "targets": {
+    "source": {
+      "build": [
+        "node",
+        "scripts/release-source.mjs"
+      ],
+      "artifacts": [
+        ".release-local/source.tar.gz"
+      ],
+      "publish": null
+    },
+    "macos": {
+      "build": [
+        "bash",
+        "scripts/build-macos-personal.sh"
+      ],
+      "artifacts": [
+        "artifacts/LocalSend Personal.app"
+      ],
+      "publish": null
+    },
+    "github": {
+      "build": [
+        "python3",
+        "scripts/package-personal-release.py"
+      ],
+      "artifacts": [
+        ".release-local/github/LocalSend-Personal-source.tar.gz",
+        ".release-local/github/LocalSend-Personal-macos-arm64.zip",
+        ".release-local/github/release-provenance.json",
+        ".release-local/github/SHA256SUMS"
+      ],
+      "publish": {
+        "adapter": "github",
+        "repository": "ylagef/localsend",
+        "draft": false
+      }
+    }
+  },
+  "notes": [
+    "GitHub releases package the retained verified macOS Apple Silicon build and exact committed source. Fork packaging version is independent from the app runtime version. macOS binaries are ad-hoc signed and not notarized; App Store and other platform adapters are unavailable."
+  ]
+}
