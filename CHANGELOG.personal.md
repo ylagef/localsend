@@ -1,5 +1,25 @@
 # LocalSend Personal
 
+## 1.19.0 (2026-11-01)
+
+### Android background reception
+
+- Receive incoming requests as notifications with Receive and Decline actions.
+- Keep receiving after removing LocalSend from recent apps, with a persistent local-network listening notification.
+- Preserve the networking engine and sessions when reopening the screen. Stop receiving closes the taskless service and network listeners.
+- Preserve existing encryption, PIN and explicit acceptance preferences; background reception does not enable automatic acceptance.
+- Document LocalSend as the delivery channel for files sent to the owner's Pixel, including APKs.
+
+### Downloads and verification
+
+- `LocalSend-Personal-android-arm64.apk`: the verified retained Android APK, runtime **1.18.3**, versionCode **202610393**, signed with the retained personal key. It can update earlier personal APKs without uninstalling them.
+- Fork publication version **1.19.0** is separate from the retained APK runtime version; the tested APK was not rebuilt or renumbered for publication.
+- Exact committed source, sanitized release provenance and SHA-256 checksums are included. This release adds Android assets; the macOS binary remains in release 1.18.3.
+- 151 Flutter tests passed with 6 platform-specific skips. Android 17 API 37 release-emulator tests verified task removal, notification receipt and saved file hash, explicit stop and reopening. Retained APK signing and identity were verified again before packaging.
+- Force stop, Android Active apps Stop, process eviction and reboot can end reception; reopen the app afterwards. Physical Pixel hardware, real Wi-Fi Doze and official desktop-sender interoperability were not verified in this audit.
+
+Enable **Settings → General → Receive in background** and allow notifications and local-network access. For screen-off reception, set battery use to Unrestricted.
+
 ## 1.18.3 (2026-10-31)
 
 First public release of the personal macOS fork, based on upstream commit `92e133aa43869e94d394fd04fa70c50a0f796a64`.
