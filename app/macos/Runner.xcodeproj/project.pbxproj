@@ -21,6 +21,9 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		AA5CAD080000000000000005 /* ReceiveAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5CAD080000000000000006 /* ReceiveAlert.swift */; };
+		AA5CAD080000000000000003 /* ReceiveNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5CAD080000000000000004 /* ReceiveNotification.swift */; };
+		AA5CAD080000000000000001 /* ImageClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5CAD080000000000000002 /* ImageClipboard.swift */; };
 		05251DB32EA03617008503F6 /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05251DB22EA03615008503F6 /* Utilities.swift */; };
 		053DADDD2C8945EF00C3B4DE /* icon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 053DADDC2C8945EF00C3B4DE /* icon.icns */; };
 		053DADE72C8945EF00C3B4DE /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 053DADDA2C8945EF00C3B4DE /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -82,6 +85,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AA5CAD080000000000000006 /* ReceiveAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiveAlert.swift; sourceTree = "<group>"; };
+		AA5CAD080000000000000004 /* ReceiveNotification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiveNotification.swift; sourceTree = "<group>"; };
+		AA5CAD080000000000000002 /* ImageClipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageClipboard.swift; sourceTree = "<group>"; };
 		05251DB22EA03615008503F6 /* Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities.swift; sourceTree = "<group>"; };
 		053DADDA2C8945EF00C3B4DE /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		053DADDC2C8945EF00C3B4DE /* icon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = icon.icns; sourceTree = "<group>"; };
@@ -95,7 +101,7 @@
 		2F8CCFF0FAB783405F067709 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
-		33CC10ED2044A3C60003C045 /* LocalSend.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalSend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		33CC10ED2044A3C60003C045 /* LocalSend.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "LocalSend Personal.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		33CC10F02044A3C60003C045 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33CC10F22044A3C60003C045 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Runner/Assets.xcassets; sourceTree = "<group>"; };
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
@@ -205,6 +211,9 @@
 			isa = PBXGroup;
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
+				AA5CAD080000000000000002 /* ImageClipboard.swift */,
+				AA5CAD080000000000000004 /* ReceiveNotification.swift */,
+				AA5CAD080000000000000006 /* ReceiveAlert.swift */,
 				0543E87A2C8A93A9004AA8B7 /* ContentDropView.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				05BAA8CF2C8CE248003CFCF1 /* SecurityScopedResourceManager.swift */,
@@ -479,6 +488,9 @@
 				053DADFD2C89F83400C3B4DE /* Shared.swift in Sources */,
 				05BAA8D02C8CE248003CFCF1 /* SecurityScopedResourceManager.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
+				AA5CAD080000000000000001 /* ImageClipboard.swift in Sources */,
+				AA5CAD080000000000000003 /* ReceiveNotification.swift in Sources */,
+				AA5CAD080000000000000005 /* ReceiveAlert.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -550,7 +562,7 @@
 				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.localsend.localsendApp.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ylagef.localsendPersonal.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -599,7 +611,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.localsend.localsendApp.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ylagef.localsendPersonal.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -646,7 +658,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = org.localsend.localsendApp.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ylagef.localsendPersonal.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;

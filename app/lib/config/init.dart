@@ -37,6 +37,7 @@ import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
 import 'package:localsend_app/util/notification_strings.dart';
+import 'package:localsend_app/util/receive_notification_navigation.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/local_network_dialog.dart';
@@ -258,7 +259,7 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
         ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
       });
 
-      await setupMethodCallHandler();
+      await setupMethodCallHandler(onNotificationClicked: openReceiveNotification, onReceiveAlertAction: handleReceiveAlertAction);
     } else {
       final args = ref.read(appArgumentsProvider);
       await ref.global.dispatchAsync(

@@ -516,6 +516,24 @@ class MockPersistenceService extends _i1.Mock implements _i4.PersistenceService 
           as _i5.Future<void>);
 
   @override
+  bool isBackgroundNotifications() =>
+      (super.noSuchMethod(
+            Invocation.method(#isBackgroundNotifications, []),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i5.Future<void> setBackgroundNotifications(bool? enabled) =>
+      (super.noSuchMethod(
+            Invocation.method(#setBackgroundNotifications, [enabled]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
   bool isMinimizeToTray() =>
       (super.noSuchMethod(
             Invocation.method(#isMinimizeToTray, []),
@@ -618,6 +636,24 @@ class MockPersistenceService extends _i1.Mock implements _i4.PersistenceService 
   bool getSaveWindowPlacement() =>
       (super.noSuchMethod(
             Invocation.method(#getSaveWindowPlacement, []),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i5.Future<void> setAlwaysOnTop(bool? alwaysOnTop) =>
+      (super.noSuchMethod(
+            Invocation.method(#setAlwaysOnTop, [alwaysOnTop]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  bool getAlwaysOnTop() =>
+      (super.noSuchMethod(
+            Invocation.method(#getAlwaysOnTop, []),
             returnValue: false,
             returnValueForMissingStub: false,
           )

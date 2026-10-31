@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
 import 'package:localsend_app/model/state/server/receiving_file.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/receive_page.dart';
+import 'package:localsend_app/provider/background_notifications_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
@@ -24,7 +26,9 @@ import 'package:localsend_app/provider/selection/selected_sending_files_provider
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/native/receive_notifications.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/util/receive_alert_actions.dart';
 import 'package:localsend_app/widget/dialogs/open_file_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -32,6 +36,7 @@ import 'package:localsend_isolates/model/file_status.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/model/session_status.dart';
 import 'package:localsend_isolates/rust/api/server.dart' show SessionEndReasonV2;
+import 'package:localsend_isolates/util/file_size_helper.dart';
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:localsend_isolates/util/transfer_notification.dart';
 import 'package:logging/logging.dart';
@@ -157,7 +162,10 @@ class ReceiveController {
       return;
     }
 
-    if (checkPlatformHasTray() && (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
+    final backgroundNotifications = Platform.isMacOS && server.ref.read(backgroundNotificationsProvider);
+    if (!backgroundNotifications &&
+        checkPlatformHasTray() &&
+        (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
       await showFromTray();
     }
 
@@ -184,7 +192,8 @@ class ReceiveController {
     final receiveProvider = ViewProvider((ref) {
       // No select: comparing the selected session runs the dart_mappable deep equality
       // over the whole files map on every state change.
-      final session = ref.watch(serverProvider)?.session;
+      final activeSession = ref.watch(serverProvider)?.session;
+      final session = activeSession?.sessionId == sessionId ? activeSession : null;
       return ReceivePageVm(
         status: session?.status,
         sender: session?.sender ?? Device.empty,
@@ -192,14 +201,10 @@ class ReceiveController {
         files: session?.files.values.map((f) => f.file).toList() ?? [],
         message: message,
         onAccept: () async {
+          if (ref.read(serverProvider)?.session?.sessionId != sessionId) return;
           if (message != null) {
             // accept nothing
             await ref.notifier(serverProvider).acceptFileRequest({});
-            return;
-          }
-
-          final sessionId = ref.read(serverProvider)?.session?.sessionId;
-          if (sessionId == null) {
             return;
           }
 
@@ -220,9 +225,11 @@ class ReceiveController {
           await ref.notifier(serverProvider).acceptFileRequest(selectedFiles);
         },
         onDecline: () {
+          if (ref.read(serverProvider)?.session?.sessionId != sessionId) return;
           ref.notifier(serverProvider).declineFileRequest();
         },
         onClose: () {
+          if (ref.read(serverProvider)?.session?.sessionId != sessionId) return;
           ref.notifier(serverProvider).closeSession();
         },
       );
@@ -231,7 +238,53 @@ class ReceiveController {
     server.ref.notifier(selectedReceivingFilesProvider).setFiles(files.values.toList());
 
     // ignore: use_build_context_synchronously, unawaited_futures
-    Routerino.context.push(() => ReceivePage(receiveProvider));
+    final receiveRoute = Routerino.transition.getRoute<void, ReceivePage>(() => ReceivePage(receiveProvider));
+    // ignore: use_build_context_synchronously
+    unawaited(Navigator.of(Routerino.context).push(receiveRoute));
+    receiveAlertActions.pending(sessionId, (action) async {
+      final current = server.getStateOrNull()?.session;
+      if (current?.sessionId != sessionId || current?.status != SessionStatus.waiting || !receiveRoute.isActive || !receiveRoute.isCurrent) {
+        return false;
+      }
+      if (action == 'reject') {
+        declineFileRequest();
+        if (receiveRoute.isActive) receiveRoute.navigator?.removeRoute(receiveRoute);
+        return true;
+      }
+      if (action != 'accept') return false;
+      final selected = Map<String, String>.of(server.ref.read(selectedReceivingFilesProvider));
+      if (message == null && selected.isEmpty) return false;
+      if (message == null) {
+        unawaited(Routerino.context.pushImmediately(() => ProgressPage(showAppBar: false, closeSessionOnClose: true, sessionId: sessionId)));
+      }
+      if (receiveRoute.isActive) receiveRoute.navigator?.removeRoute(receiveRoute);
+      await acceptFileRequest(message == null ? selected : {});
+      return true;
+    });
+
+    final notified =
+        backgroundNotifications &&
+        await showReceiveNotification(
+          enabled: backgroundNotifications,
+          sessionId: sessionId,
+          kind: 'pending',
+          title: t.settingsTab.general.notificationPendingTitle(alias: server.getStateOrNull()?.session?.senderAlias ?? event.info.alias),
+          body: files.values.take(3).map((f) => f.fileName).join(', '),
+          details: {
+            'detail': files.values.fold<int>(0, (sum, f) => sum + f.size).asReadableFileSize,
+            'primaryLabel': t.settingsTab.general.alertAccept,
+            'primaryAction': 'accept',
+            'secondaryLabel': t.settingsTab.general.alertReject,
+            'secondaryAction': 'reject',
+            'dismissLabel': t.settingsTab.general.alertDismiss,
+          },
+        );
+    if (backgroundNotifications &&
+        !notified &&
+        checkPlatformHasTray() &&
+        (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
+      await showFromTray();
+    }
   }
 
   /// An accepted file started being uploaded.
@@ -389,7 +442,7 @@ class ReceiveController {
         );
 
     final session = server.getStateOrNull()?.session;
-    if (session == null) {
+    if (session == null || session.sessionId != event.sessionId) {
       return;
     }
 
@@ -421,9 +474,41 @@ class ReceiveController {
           quickSave = true;
         }
       }
+      if (Platform.isMacOS) {
+        final completedFiles = session.files.values.where((f) => f.path != null && f.path!.isNotEmpty && f.errorMessage == null).toList();
+        final single = !hasError && completedFiles.length == 1 ? completedFiles.single : null;
+        final image = single?.file.fileType == FileType.image;
+        receiveAlertActions.completed(session.sessionId, path: single?.path ?? '', image: image);
+        await showReceiveNotification(
+          enabled: server.ref.read(backgroundNotificationsProvider),
+          sessionId: session.sessionId,
+          kind: hasError ? 'error' : 'done',
+          title: hasError
+              ? t.settingsTab.general.alertError
+              : completedFiles.length == 1
+              ? t.settingsTab.general.alertDoneSingleTitle(alias: session.senderAlias)
+              : t.settingsTab.general.notificationDoneTitle(
+                  count: completedFiles.length,
+                  alias: session.senderAlias,
+                ),
+          body: hasError ? t.settingsTab.general.alertErrorBody : completedFiles.take(3).map((f) => f.desiredName ?? f.file.fileName).join(', '),
+          details: {
+            'detail': completedFiles.fold<int>(0, (sum, f) => sum + f.file.size).asReadableFileSize,
+            if (image && single?.path != null) 'previewPath': single!.path!,
+            'primaryLabel': image
+                ? t.settingsTab.general.alertCopy
+                : (single != null ? t.settingsTab.general.alertOpen : t.settingsTab.general.alertHistory),
+            'primaryAction': image ? 'copy' : (single != null ? 'open' : 'history'),
+            if (image) 'secondaryLabel': t.settingsTab.general.alertOpen,
+            if (image) 'secondaryAction': 'open',
+            'dismissLabel': t.settingsTab.general.alertDismiss,
+          },
+        );
+      }
       if (quickSave) {
         // close the session **after** the response has been sent
         Future.delayed(Duration.zero, () {
+          if (server.getStateOrNull()?.session?.sessionId != session.sessionId) return;
           closeSession();
           _logger.info('Closing session');
 
@@ -527,6 +612,27 @@ class ReceiveController {
     final session = server.getStateOrNull()?.session;
     if (session == null || session.status != SessionStatus.waiting) {
       return;
+    }
+
+    receiveAlertActions.clearPending(session.sessionId);
+    unawaited(removeReceiveNotification(session.sessionId));
+    if (fileNameMap.isNotEmpty && Platform.isMacOS) {
+      unawaited(
+        showReceiveNotification(
+          enabled: server.ref.read(backgroundNotificationsProvider),
+          sessionId: session.sessionId,
+          kind: 'receiving',
+          title: t.settingsTab.general.alertReceiving(alias: session.senderAlias),
+          body: fileNameMap.values.take(3).join(', '),
+          details: {
+            'detail': session.files.values
+                .where((f) => fileNameMap.containsKey(f.file.id))
+                .fold<int>(0, (sum, f) => sum + f.file.size)
+                .asReadableFileSize,
+            'dismissLabel': t.settingsTab.general.alertDismiss,
+          },
+        ),
+      );
     }
 
     if (fileNameMap.isEmpty) {
@@ -686,6 +792,9 @@ class ReceiveController {
       return;
     }
 
+    receiveAlertActions.clearPending(sessionId);
+    unawaited(removeReceiveNotification(sessionId));
+
     TransferNotification.stop(sessionId);
 
     server.setState(
@@ -703,6 +812,8 @@ void _cancelBySender(ServerUtils server) {
     return;
   }
 
+  receiveAlertActions.clearPending(receiveSession.sessionId);
+  unawaited(removeReceiveNotification(receiveSession.sessionId));
   TransferNotification.stop(receiveSession.sessionId);
 
   if (receiveSession.status == SessionStatus.waiting) {

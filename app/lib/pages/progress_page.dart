@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -11,12 +12,14 @@ import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/native/image_clipboard.dart';
 import 'package:localsend_app/util/native/open_file.dart';
 import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/taskbar_helper.dart';
 import 'package:localsend_app/util/notification_strings.dart';
 import 'package:localsend_app/util/ui/nav_bar_padding.dart';
+import 'package:localsend_app/widget/copy_image_button.dart';
 import 'package:localsend_app/widget/custom_progress_bar.dart';
 import 'package:localsend_app/widget/dialogs/cancel_session_dialog.dart';
 import 'package:localsend_app/widget/dialogs/error_dialog.dart';
@@ -440,6 +443,10 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                             ],
                           ),
                         ),
+                        if (receiveSession != null &&
+                            fileStatus == FileStatus.finished &&
+                            canCopyReceivedImage(fileType: file.fileType, path: filePath, isMacOS: Platform.isMacOS))
+                          CopyImageButton(key: ValueKey('copy-image-${file.id}'), path: filePath!),
                         if (sendSession != null && fileStatus == FileStatus.failed)
                           IconButton(
                             icon: const Icon(Icons.refresh),

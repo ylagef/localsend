@@ -8,6 +8,7 @@ import 'package:localsend_app/pages/changelog_page.dart';
 import 'package:localsend_app/pages/donation/donation_page.dart';
 import 'package:localsend_app/pages/settings/network_interfaces_page.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
+import 'package:localsend_app/provider/background_notifications_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/version_provider.dart';
@@ -18,6 +19,7 @@ import 'package:localsend_app/util/native/device_info_helper.dart';
 import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/pick_directory_path.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/custom_dropdown_button.dart';
 import 'package:localsend_app/widget/dialogs/encryption_disabled_notice.dart';
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
@@ -119,6 +121,7 @@ class SettingsTab extends StatelessWidget {
                       },
                     ),
                   ],
+                  if (defaultTargetPlatform == TargetPlatform.macOS) const BackgroundNotificationsSetting(),
                   if (checkPlatformIsDesktop()) ...[
                     _BooleanEntry(
                       label: t.settingsTab.general.launchAtStartup,
@@ -794,5 +797,40 @@ extension on ColorMode {
       ColorMode.yaru => 'Yaru',
       ColorMode.custom => t.settingsTab.general.colorOptions.custom,
     };
+  }
+}
+
+/// Reuses the settings entry layout; the system permission prompt is user-initiated.
+class BackgroundNotificationsSetting extends StatefulWidget {
+  const BackgroundNotificationsSetting({super.key});
+
+  @override
+  State<BackgroundNotificationsSetting> createState() => _BackgroundNotificationsSettingState();
+}
+
+class _BackgroundNotificationsSettingState extends State<BackgroundNotificationsSetting> {
+  bool _updating = false;
+
+  Future<void> _toggle(bool enabled) async {
+    if (_updating) return;
+    setState(() => _updating = true);
+    try {
+      final granted = await context.ref.notifier(backgroundNotificationsProvider).setEnabled(enabled);
+      if (!granted && mounted) context.showSnackBar(t.settingsTab.general.notificationDenied);
+    } catch (_) {
+      if (mounted) context.showSnackBar(t.general.error);
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _BooleanEntry(
+      label: t.settingsTab.general.backgroundNotifications,
+      description: t.settingsTab.general.backgroundNotificationsHint,
+      value: context.watch(backgroundNotificationsProvider),
+      onChanged: _updating ? null : _toggle,
+    );
   }
 }

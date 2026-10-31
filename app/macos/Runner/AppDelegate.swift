@@ -3,6 +3,7 @@ import FlutterMacOS
 import Defaults
 import DockProgress
 import LaunchAtLogin
+import UserNotifications
 
 enum DockIcon: CaseIterable {
     case regular
@@ -11,7 +12,25 @@ enum DockIcon: CaseIterable {
 }
 
 @main
-class AppDelegate: FlutterAppDelegate {
+class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
+    private var notificationHandlerReady = false
+    private var pendingNotificationClick: [String: String]?
+    private var receiveAlertActivationObserver: NSObjectProtocol?
+    private var receiveAlertKinds: [String: String] = [:]
+    @MainActor private var receiveAlertControllerStorage: ReceiveAlertController?
+    @MainActor private var receiveAlertController: ReceiveAlertController {
+        if let controller = receiveAlertControllerStorage { return controller }
+        let controller = ReceiveAlertController()
+        controller.onAction = { [weak self] sessionId, kind, action, completion in
+            guard let channel = self?.channel else { completion(false, "LocalSend is unavailable."); return }
+            channel.invokeMethod("onReceiveAlertAction", arguments: ["sessionId": sessionId, "kind": kind, "action": action]) { reply in
+                let response = reply as? [String: Any]
+                completion(response?["success"] as? Bool ?? false, response?["message"] as? String ?? "")
+            }
+        }
+        receiveAlertControllerStorage = controller
+        return controller
+    }
     private var statusItem: NSStatusItem?
     private var channel: FlutterMethodChannel?
     private var pendingFilesObservation: Defaults.Observation?
@@ -34,6 +53,7 @@ class AppDelegate: FlutterAppDelegate {
     }
 
     override func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         NSApplication.shared.servicesProvider = self
         
         let localsendBrandColor = NSColor(red: 0, green: 0.392, blue: 0.353, alpha: 0.8) // #00645a
@@ -141,17 +161,110 @@ class AppDelegate: FlutterAppDelegate {
         self.showLocalSendFromMenuBar()
     }
     
+    private var isReceiveWindowForeground: Bool {
+        NSApp.isActive && mainFlutterWindow?.isVisible == true && mainFlutterWindow?.isMiniaturized == false
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        DispatchQueue.main.async {
+            completionHandler(self.isReceiveWindowForeground ? [] : [.banner, .list, .sound])
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let sessionId = response.notification.request.content.userInfo["sessionId"] as? String,
+              let kind = response.notification.request.content.userInfo["kind"] as? String,
+              ["pending", "done"].contains(kind) else { completionHandler(); return }
+        DispatchQueue.main.async {
+            let click = ["sessionId": sessionId, "kind": kind]
+            if self.notificationHandlerReady {
+                self.channel?.invokeMethod("onNotificationClicked", arguments: click)
+            } else {
+                self.pendingNotificationClick = click
+            }
+            completionHandler()
+        }
+    }
+
     // START: handle opened files
     @MainActor private func handleFlutterCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "methodChannelInitialized":
             /// Any call to the channel is dropped until methodChannelInitialized is called from Flutter
             setupPendingItemsObservation()
+            if receiveAlertActivationObserver == nil, let window = mainFlutterWindow {
+                receiveAlertActivationObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, self.isReceiveWindowForeground else { return }
+                        self.receiveAlertController.dismissAll()
+                        self.receiveAlertKinds.removeAll()
+                    }
+                }
+            }
+            notificationHandlerReady = true
+            if let click = pendingNotificationClick {
+                pendingNotificationClick = nil
+                DispatchQueue.main.async { self.channel?.invokeMethod("onNotificationClicked", arguments: click) }
+            }
             result(nil)
         case "setupStatusBar":
             let i18n = call.arguments as! [String: String]
             setupStatusBarItem(i18n: i18n)
             result(nil)
+        case "enableReceiveAlerts":
+            result(true)
+        case "showReceiveNotification":
+            guard let arguments = call.arguments as? [String: String],
+                  let alert = ReceiveAlertPayload(arguments) else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Expected receive alert", details: nil))
+                return
+            }
+            guard !isReceiveWindowForeground else {
+                receiveAlertController.dismiss(sessionId: alert.sessionId)
+                receiveAlertKinds.removeValue(forKey: alert.sessionId)
+                result(false)
+                return
+            }
+            receiveAlertController.show(alert)
+            receiveAlertKinds = receiveAlertKinds.filter { receiveAlertController.visibleSessionIds.contains($0.key) }
+            receiveAlertKinds[arguments["sessionId"]!] = arguments["kind"]!
+            result(true)
+        case "removeReceiveNotification":
+            guard let sessionId = call.arguments as? String else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Expected session ID", details: nil))
+                return
+            }
+            if ["pending", "receiving"].contains(receiveAlertKinds[sessionId] ?? "") {
+                receiveAlertController.dismiss(sessionId: sessionId)
+                receiveAlertKinds.removeValue(forKey: sessionId)
+            }
+            result(nil)
+        case "hideReceiveAlerts":
+            receiveAlertController.dismissAll()
+            receiveAlertKinds.removeAll()
+            result(nil)
+        case "openReceivedFile":
+            guard let path = call.arguments as? String, FileManager.default.fileExists(atPath: path) else {
+                result(false)
+                return
+            }
+            result(NSWorkspace.shared.open(URL(fileURLWithPath: path)))
+        case "copyImageToClipboard":
+            guard let path = call.arguments as? String else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Expected an image path", details: nil))
+                return
+            }
+            do {
+                try ImageClipboard.copyImage(atPath: path)
+                result(nil)
+            } catch {
+                result(FlutterError(code: "IMAGE_COPY_FAILED", message: "Could not copy the image", details: nil))
+            }
         case "restoreWindowFrame":
             guard let window = mainFlutterWindow else {
                 result(FlutterError(code: "WINDOW_UNAVAILABLE", message: "Main window is unavailable", details: nil))
