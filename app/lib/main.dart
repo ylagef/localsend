@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:localsend_app/config/init.dart';
@@ -6,6 +8,7 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
@@ -62,8 +65,11 @@ class LocalSendApp extends StatelessWidget {
           onChangedState: (AppLifecycleState state) {
             switch (state) {
               case AppLifecycleState.resumed:
+                if (checkPlatform([TargetPlatform.android])) {
+                  unawaited(resumeAndroidReceiveEngine(ref));
+                }
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
-                if (checkPlatform([TargetPlatform.iOS, TargetPlatform.android])) {
+                if (checkPlatform([TargetPlatform.iOS])) {
                   // The OS may have invalidated the sockets of the suspended app without any error ever reaching the accept loop.
                   // ignore: discarded_futures
                   ref.notifier(serverProvider).ensureRunning();
@@ -74,6 +80,12 @@ class LocalSendApp extends StatelessWidget {
                 }
                 break;
               case AppLifecycleState.detached:
+                // Android keeps a process-owned engine while its Activity is absent.
+                // Task removal must not dispose the networking that the service protects.
+                if (checkPlatform([TargetPlatform.android])) {
+                  unawaited(releaseIdleAndroidReceiveEngine(ref));
+                  break;
+                }
                 // The main isolate is only exited when all child isolates are exited.
                 // https://github.com/localsend/localsend/issues/1568
                 ref.redux(parentIsolateProvider).dispatch(IsolateDisposeAction());

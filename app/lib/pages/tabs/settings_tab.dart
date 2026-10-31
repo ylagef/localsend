@@ -8,6 +8,7 @@ import 'package:localsend_app/pages/changelog_page.dart';
 import 'package:localsend_app/pages/donation/donation_page.dart';
 import 'package:localsend_app/pages/settings/network_interfaces_page.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/background_notifications_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
@@ -89,6 +90,7 @@ class SettingsTab extends StatelessWidget {
                   buttonLabel: vm.settings.locale?.getLocaleName() ?? t.settingsTab.general.languageOptions.system,
                   onTap: () => vm.onTapLanguage(context),
                 ),
+                if (defaultTargetPlatform == TargetPlatform.android) const AndroidReceiveModeSetting(),
                 if (checkPlatformIsDesktop()) ...[
                   _BooleanEntry(
                     label: t.settingsTab.general.alwaysOnTop,
@@ -831,6 +833,41 @@ class _BackgroundNotificationsSettingState extends State<BackgroundNotifications
       description: t.settingsTab.general.backgroundNotificationsHint,
       value: context.watch(backgroundNotificationsProvider),
       onChanged: _updating ? null : _toggle,
+    );
+  }
+}
+
+class AndroidReceiveModeSetting extends StatefulWidget {
+  const AndroidReceiveModeSetting({super.key});
+  @override
+  State<AndroidReceiveModeSetting> createState() => _AndroidReceiveModeSettingState();
+}
+
+class _AndroidReceiveModeSettingState extends State<AndroidReceiveModeSetting> {
+  bool _updating = false;
+  Future<void> _toggle(bool enabled) async {
+    if (_updating) return;
+    setState(() => _updating = true);
+    try {
+      final success = await context.ref.notifier(androidReceiveModeProvider).setEnabled(enabled);
+      if (!success && mounted) context.showSnackBar(t.settingsTab.general.androidReceiveUnavailable);
+    } catch (_) {
+      if (mounted) context.showSnackBar(t.settingsTab.general.androidReceiveUnavailable);
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Translations.of(context);
+    return MergeSemantics(
+      child: _BooleanEntry(
+        label: t.settingsTab.general.androidReceiveMode,
+        description: t.settingsTab.general.androidReceiveHint,
+        value: context.watch(androidReceiveModeProvider),
+        onChanged: _updating ? null : _toggle,
+      ),
     );
   }
 }

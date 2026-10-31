@@ -5,6 +5,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/model/state/server/server_state.dart';
 import 'package:localsend_app/model/state/server/web_share_state.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/network/server/controller/receive_controller.dart';
 import 'package:localsend_app/provider/network/server/controller/send_controller.dart';
 import 'package:localsend_app/provider/network/server/server_utils.dart';
@@ -226,7 +227,10 @@ class ServerService extends Notifier<ServerState?> {
     return newServerState;
   }
 
-  Future<void> stopServer() async {
+  Future<void> stopServer({bool preserveAvailability = false}) async {
+    if (!preserveAvailability && Platform.isAndroid) {
+      await ref.notifier(androidReceiveModeProvider).setEnabled(false);
+    }
     _logger.info('Stopping server...');
     if (state?.session != null) _receiveController.closeSession();
     await _subscription?.cancel();
@@ -237,8 +241,7 @@ class ServerService extends Notifier<ServerState?> {
   }
 
   Future<ServerState?> restartServerFromSettings() async {
-    await stopServer();
-    return await startServerFromSettings();
+    return _restartPreservingAvailability(startServerFromSettings);
   }
 
   Future<ServerState?> restartServer({
@@ -247,8 +250,23 @@ class ServerService extends Notifier<ServerState?> {
     required bool https,
     WebShareState? web,
   }) async {
-    await stopServer();
-    return await startServer(alias: alias, port: port, https: https, web: web);
+    return _restartPreservingAvailability(() => startServer(alias: alias, port: port, https: https, web: web));
+  }
+
+  Future<ServerState?> _restartPreservingAvailability(Future<ServerState?> Function() start) async {
+    await stopServer(preserveAvailability: true);
+    try {
+      final next = await start();
+      if (next == null && Platform.isAndroid && ref.read(androidReceiveModeProvider)) {
+        await ref.notifier(androidReceiveModeProvider).setEnabled(false, save: false);
+      }
+      return next;
+    } catch (_) {
+      if (Platform.isAndroid && ref.read(androidReceiveModeProvider)) {
+        await ref.notifier(androidReceiveModeProvider).setEnabled(false, save: false);
+      }
+      rethrow;
+    }
   }
 
   Future<void> acceptFileRequest(Map<String, String> fileNameMap) async {

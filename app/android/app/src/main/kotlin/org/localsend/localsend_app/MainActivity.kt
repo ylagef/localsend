@@ -2,23 +2,20 @@ package org.localsend.localsend_app
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.Cursor
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.DocumentsContract
-import android.provider.Settings
-import android.webkit.MimeTypeMap
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.MethodCall
+import io.flutter.embedding.engine.FlutterEngineCache
+import com.pravera.flutter_foreground_task.service.ForegroundService as AndroidForegroundService
+import android.os.Handler
+import android.os.Looper
+import java.lang.ref.WeakReference
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -44,10 +41,43 @@ class MainActivity : FlutterActivity() {
     /// activity is relaunched into an existing task while the app is still starting.
     /// Hold such intents back until Dart reports readiness ("shareIntentReady"), then
     /// replay them through the regular plugin path.
-    private val pendingShareIntents = mutableListOf<Intent>()
-    private var shareIntentReady = false
+    // Readiness belongs to the retained engine, not to an individual Activity.
+
+    private fun openReceiveIntent(intent: Intent) {
+        if (!receiveReady || intent.action != "org.localsend.OPEN_RECEIVE") return
+        val sessionId = intent.getStringExtra("sessionId") ?: return
+        val kind = intent.getStringExtra("kind") ?: return
+        ReceiveNotifications.channel?.invokeMethod("onNotificationClicked", mapOf("sessionId" to sessionId, "kind" to kind))
+        intent.action = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ReceiveNotifications.visible = true
+        openReceiveIntent(intent)
+    }
+
+    override fun onPause() {
+        ReceiveNotifications.visible = false
+        super.onPause()
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        // Dart closes the native Rust listeners before releasing a taskless engine.
+        if (attachedActivity?.get() === this) attachedActivity = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onDestroy() {
+        pendingPermissionResult?.success(false)
+        pendingPermissionResult = null
+        pendingResult?.error("CANCELED", "LocalSend screen was closed", null)
+        pendingResult = null
+        super.onDestroy()
+    }
 
     override fun onNewIntent(intent: Intent) {
+        openReceiveIntent(intent)
         if (!shareIntentReady && (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE)) {
             pendingShareIntents.add(intent)
             return
@@ -66,7 +96,27 @@ class MainActivity : FlutterActivity() {
 
     // Overriding the static methods we need from the Java class, as described
     // in the documentation of `FlutterActivity.NewEngineIntentBuilder`
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        FlutterEngineCache.getInstance().get(MAIN_ENGINE)
+
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     companion object {
+        private const val MAIN_ENGINE = "localsend_main"
+        private val pendingShareIntents = mutableListOf<Intent>()
+        private var shareIntentReady = false
+        private var receiveReady = false
+        private var attachedActivity: WeakReference<MainActivity>? = null
+
+        private fun clearRetainedEngine(engine: FlutterEngine) {
+            if (FlutterEngineCache.getInstance().get(MAIN_ENGINE) === engine) {
+                FlutterEngineCache.getInstance().remove(MAIN_ENGINE)
+                ReceiveNotifications.channel = null
+                receiveReady = false
+                shareIntentReady = false
+                pendingShareIntents.clear()
+            }
+        }
         fun withNewEngine(): NewEngineIntentBuilder {
             return NewEngineIntentBuilder(MainActivity::class.java)
         }
@@ -78,65 +128,103 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        attachedActivity = WeakReference(this)
+        FlutterEngineCache.getInstance().put(MAIN_ENGINE, flutterEngine)
+        val appContext = applicationContext
+        val activity = WeakReference(this)
+        val files = AndroidFileAccess(appContext)
+        val receiveChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.localsend.localsend_app/receive")
+        ReceiveNotifications.channel = receiveChannel
+        receiveChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "enableReceiveAlerts" -> result.success(ReceiveNotifications.enable(appContext, call.argument<String>("channelName") ?: "LocalSend"))
+                "showReceiveNotification" -> result.success(ReceiveNotifications.show(appContext, call.arguments as? Map<*, *> ?: emptyMap<String, Any>()))
+                "removeReceiveNotification" -> { ReceiveNotifications.remove(appContext, call.arguments as? String ?: ""); result.success(null) }
+                "hideReceiveAlerts" -> { ReceiveNotifications.hide(appContext); result.success(null) }
+                "releaseDetachedEngine" -> {
+                    Handler(Looper.getMainLooper()).post {
+                        val release = attachedActivity?.get()?.isDestroyed != false &&
+                            !AndroidForegroundService.isRunningServiceState.value &&
+                            FlutterEngineCache.getInstance().get(MAIN_ENGINE) === flutterEngine
+                        result.success(release)
+                        if (release) {
+                            clearRetainedEngine(flutterEngine)
+                            Handler(Looper.getMainLooper()).post { flutterEngine.destroy() }
+                        }
+                    }
+                }
+                "receiveNotificationsReady" -> { ReceiveNotifications.clearOrphanedRequests(appContext); receiveReady = true; activity.get()?.let { it.openReceiveIntent(it.intent) }; result.success(null) }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickDirectory" -> {
-                    pendingResult = result
-                    openDirectoryPicker(onlyPath = false)
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (host == null) result.error("NO_ACTIVITY", "Open LocalSend to choose a folder", null)
+                    else { host.pendingResult = result; host.openDirectoryPicker(onlyPath = false) }
                 }
 
                 "pickFiles" -> {
-                    pendingResult = result
-                    openFilePicker()
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (host == null) result.error("NO_ACTIVITY", "Open LocalSend to choose files", null)
+                    else { host.pendingResult = result; host.openFilePicker() }
                 }
 
                 "pickDirectoryPath" -> {
-                    pendingResult = result
-                    openDirectoryPicker(onlyPath = true)
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (host == null) result.error("NO_ACTIVITY", "Open LocalSend to choose a folder", null)
+                    else { host.pendingResult = result; host.openDirectoryPicker(onlyPath = true) }
                 }
 
-                "createDirectory" -> handleCreateDirectory(call, result)
+                "createDirectory" -> files.handleCreateDirectory(call, result)
 
-                "getFileDescriptor" -> handleGetFileDescriptor(call, result)
+                "getFileDescriptor" -> files.handleGetFileDescriptor(call, result)
 
-                "createFile" -> handleCreateFile(call, result)
+                "createFile" -> files.handleCreateFile(call, result)
 
-                "openFileForWriting" -> handleOpenFileForWriting(call, result)
+                "openFileForWriting" -> files.handleOpenFileForWriting(call, result)
 
-                "scanFile" -> handleScanFile(call, result)
+                "scanFile" -> files.handleScanFile(call, result)
 
                 "openContentUri" -> {
-                    openUri(context, call.argument<String>("uri")!!)
-                    result.success(null)
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (host == null) result.error("NO_ACTIVITY", "Open LocalSend to view a file", null)
+                    else { openUri(host, call.argument<String>("uri")!!); result.success(null) }
                 }
 
                 "openGallery" -> {
-                    openGallery()
-                    result.success(null)
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (host == null) result.error("NO_ACTIVITY", "Open LocalSend to view the gallery", null)
+                    else { host.openGallery(); result.success(null) }
                 }
 
                 "shareIntentReady" -> {
-                    onShareIntentReady()
+                    activity.get()?.onShareIntentReady()
                     result.success(null)
                 }
 
                 "isAnimationsEnabled" -> {
-                    result.success(isAnimationsEnabled())
+                    result.success(files.isAnimationsEnabled())
                 }
 
                 "getDownloadsDirectory" -> {
-                    result.success(getDownloadsDirectory())
+                    result.success(files.getDownloadsDirectory())
                 }
 
                 "requestLocalNetworkPermission" -> {
-                    if (hasLocalNetworkPermission()) {
+                    val host = activity.get()?.takeUnless { it.isDestroyed }
+                    if (Build.VERSION.SDK_INT < API_LEVEL_ANDROID_17 ||
+                        appContext.checkSelfPermission(PERMISSION_ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED) {
                         result.success(true)
+                    } else if (host == null) {
+                        result.success(false)
                     } else {
-                        pendingPermissionResult = result
-                        requestPermissions(arrayOf(PERMISSION_ACCESS_LOCAL_NETWORK), REQUEST_CODE_LOCAL_NETWORK)
+                        host.pendingPermissionResult = result
+                        host.requestPermissions(arrayOf(PERMISSION_ACCESS_LOCAL_NETWORK), REQUEST_CODE_LOCAL_NETWORK)
                     }
                 }
 
@@ -145,183 +233,11 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// Android 17+ gates local network access behind a runtime permission; older versions grant it implicitly.
-    private fun hasLocalNetworkPermission(): Boolean {
-        if (Build.VERSION.SDK_INT < API_LEVEL_ANDROID_17) {
-            return true
-        }
-        return checkSelfPermission(PERMISSION_ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_LOCAL_NETWORK) {
             pendingPermissionResult?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
             pendingPermissionResult = null
-        }
-    }
-
-    /// Absolute path of the shared "Download" directory (usually /storage/emulated/0/Download).
-    @Suppress("DEPRECATION")
-    private fun getDownloadsDirectory(): String {
-        return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
-    }
-
-    private fun isAnimationsEnabled() : Boolean {
-        return Settings.Global.getFloat(this.getContentResolver(),
-            Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f) != 0.0f;
-    }
-
-    private fun handleScanFile(call: MethodCall, result: MethodChannel.Result) {
-        val path = call.argument<String>("path")
-        if (path.isNullOrBlank() || !File(path).isAbsolute) {
-            result.error("INVALID_ARGUMENT", "Expected an absolute filesystem path", null)
-            return
-        }
-
-        try {
-            MediaScannerConnection.scanFile(applicationContext, arrayOf(path), null) { _, uri ->
-                result.success(uri != null)
-            }
-        } catch (e: Exception) {
-            result.error("SCAN_FAILED", e.message ?: "Failed to scan file", null)
-        }
-    }
-
-    private fun handleGetFileDescriptor(call: MethodCall, result: MethodChannel.Result) {
-        val uriString = call.argument<String>("uri")
-        if (uriString == null) {
-            result.error("INVALID_ARGUMENT", "Missing content URI", null)
-            return
-        }
-
-        val uri = Uri.parse(uriString)
-        if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
-            result.error("INVALID_ARGUMENT", "Expected a content:// URI", null)
-            return
-        }
-
-        try {
-            val parcelFileDescriptor = contentResolver.openFileDescriptor(uri, "r")
-            if (parcelFileDescriptor == null) {
-                result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
-                return
-            }
-
-            // Ownership of the detached descriptor is transferred to the caller. It must be
-            // closed by Rust (or whichever native consumer receives it) after use.
-            parcelFileDescriptor.use {
-                result.success(it.detachFd())
-            }
-        } catch (e: SecurityException) {
-            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
-        } catch (e: Exception) {
-            result.error("OPEN_FAILED", e.message ?: "Failed to open content URI", null)
-        }
-    }
-
-    /// Creates a new file inside a SAF directory and opens it for writing.
-    ///
-    /// Returns the URI of the created document (Android may rename the file on
-    /// collisions) and an owned writable file descriptor. The descriptor must be
-    /// closed by the native consumer it is passed to.
-    private fun handleCreateFile(call: MethodCall, result: MethodChannel.Result) {
-        val parentUriString = call.argument<String>("parentUri")
-        val fileName = call.argument<String>("fileName")
-        if (parentUriString == null || fileName == null) {
-            result.error("INVALID_ARGUMENT", "Missing parentUri or fileName", null)
-            return
-        }
-
-        try {
-            val parentUri = Uri.parse(parentUriString)
-
-            // A pure tree URI (content://…/tree/X) must be converted to its
-            // document form before it can be used as a parent document.
-            val segments = parentUri.pathSegments
-            val parentDocumentUri = if (segments.size == 2 && segments[0] == "tree") {
-                DocumentsContract.buildDocumentUriUsingTree(
-                    parentUri,
-                    DocumentsContract.getTreeDocumentId(parentUri)
-                )
-            } else {
-                parentUri
-            }
-
-            // Providers append an extension when the MIME type does not match the one Android maps the
-            // file's extension to (e.g. "test.conf" as text/plain becomes "test.conf.txt"), so derive it
-            // from the same map. application/octet-stream keeps the name as-is for unknown extensions.
-            val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
-            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-                ?: "application/octet-stream"
-
-            val documentUri =
-                DocumentsContract.createDocument(contentResolver, parentDocumentUri, mimeType, fileName)
-            if (documentUri == null) {
-                result.error("CREATE_FAILED", "Could not create $fileName in $parentUriString", null)
-                return
-            }
-
-            // "wt" is write + truncate: the document is new, unless the provider
-            // handed out an existing one instead of creating a second document.
-            val parcelFileDescriptor = contentResolver.openFileDescriptor(documentUri, "wt")
-            if (parcelFileDescriptor == null) {
-                result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
-                return
-            }
-
-            parcelFileDescriptor.use {
-                result.success(
-                    mapOf(
-                        "uri" to documentUri.toString(),
-                        "fd" to it.detachFd(),
-                    )
-                )
-            }
-        } catch (e: SecurityException) {
-            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
-        } catch (e: Exception) {
-            result.error("CREATE_FAILED", e.message ?: "Failed to create file", null)
-        }
-    }
-
-    /// Opens an existing document created by [handleCreateFile] for writing,
-    /// discarding its current content.
-    ///
-    /// Used to write a file again after a failed attempt, so that it keeps its
-    /// name instead of being created a second time under a numbered one.
-    ///
-    /// Returns an owned writable file descriptor. It stays open after this call
-    /// and must be closed by the native consumer it is passed to.
-    private fun handleOpenFileForWriting(call: MethodCall, result: MethodChannel.Result) {
-        val uriString = call.argument<String>("uri")
-        if (uriString == null) {
-            result.error("INVALID_ARGUMENT", "Missing content URI", null)
-            return
-        }
-
-        val uri = Uri.parse(uriString)
-        if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
-            result.error("INVALID_ARGUMENT", "Expected a content:// URI", null)
-            return
-        }
-
-        try {
-            // "wt" is write + truncate. A document provider may ignore the
-            // truncation, so the writer additionally shortens the file itself.
-            val parcelFileDescriptor = contentResolver.openFileDescriptor(uri, "wt")
-            if (parcelFileDescriptor == null) {
-                result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
-                return
-            }
-
-            parcelFileDescriptor.use {
-                result.success(it.detachFd())
-            }
-        } catch (e: SecurityException) {
-            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
-        } catch (e: Exception) {
-            result.error("OPEN_FAILED", e.message ?: "Failed to open content URI", null)
         }
     }
 
@@ -457,55 +373,6 @@ class MainActivity : FlutterActivity() {
                 )
             }
         }
-    }
-
-    @SuppressLint("WrongConstant")
-    private fun handleCreateDirectory(call: MethodCall, result: MethodChannel.Result) {
-        val documentUri = Uri.parse(call.argument<String>("documentUri")!!)
-        val directoryName = call.argument<String>("directoryName")!!
-
-        if (folderExists(documentUri, directoryName)) {
-            result.success(null)
-            return
-        }
-
-        DocumentsContract.createDocument(
-            context.contentResolver, documentUri, DocumentsContract.Document.MIME_TYPE_DIR,
-            directoryName
-        )
-
-        result.success(null)
-    }
-
-    private fun folderExists(documentUri: Uri, folderName: String): Boolean {
-        var cursor: Cursor? = null
-        try {
-            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(documentUri, DocumentsContract.getDocumentId(documentUri))
-            cursor = contentResolver.query(
-                childrenUri,
-                arrayOf(
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                    DocumentsContract.Document.COLUMN_MIME_TYPE
-                ),
-                null,
-                null,
-                null,
-            )
-
-            if (cursor != null) {
-                while (cursor.moveToNext()) {
-                    val displayName = cursor.getString(0)
-                    val mimeType = cursor.getString(1)
-
-                    if (folderName == displayName && DocumentsContract.Document.MIME_TYPE_DIR == mimeType) {
-                        return true
-                    }
-                }
-            }
-        } finally {
-            cursor?.close()
-        }
-        return false
     }
 
     private fun openGallery() {

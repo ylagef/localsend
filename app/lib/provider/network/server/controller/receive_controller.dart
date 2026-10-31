@@ -10,6 +10,7 @@ import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/receive_page.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/background_notifications_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
@@ -73,6 +74,14 @@ class ReceiveController {
   /// The Rust server already checked the PIN and enforces that only one
   /// session can be active at a time.
   Future<void> onPrepareUpload(HttpServerPrepareUploadEvent event) async {
+    if (Platform.isAndroid &&
+        (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.hidden ||
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.detached) &&
+        !server.ref.read(androidReceiveModeProvider)) {
+      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: null));
+      return;
+    }
     if (server.getStateOrNull()?.session != null) {
       // The Rust server is the authority on the single-session invariant:
       // a new request means the old session is over (e.g. finished but still
@@ -162,7 +171,9 @@ class ReceiveController {
       return;
     }
 
-    final backgroundNotifications = Platform.isMacOS && server.ref.read(backgroundNotificationsProvider);
+    final backgroundNotifications = Platform.isAndroid
+        ? server.ref.read(androidReceiveModeProvider)
+        : Platform.isMacOS && server.ref.read(backgroundNotificationsProvider);
     if (!backgroundNotifications &&
         checkPlatformHasTray() &&
         (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
@@ -243,7 +254,9 @@ class ReceiveController {
     unawaited(Navigator.of(Routerino.context).push(receiveRoute));
     receiveAlertActions.pending(sessionId, (action) async {
       final current = server.getStateOrNull()?.session;
-      if (current?.sessionId != sessionId || current?.status != SessionStatus.waiting || !receiveRoute.isActive || !receiveRoute.isCurrent) {
+      if (current?.sessionId != sessionId ||
+          current?.status != SessionStatus.waiting ||
+          (!Platform.isAndroid && (!receiveRoute.isActive || !receiveRoute.isCurrent))) {
         return false;
       }
       if (action == 'reject') {
@@ -474,13 +487,13 @@ class ReceiveController {
           quickSave = true;
         }
       }
-      if (Platform.isMacOS) {
+      if (Platform.isMacOS || Platform.isAndroid) {
         final completedFiles = session.files.values.where((f) => f.path != null && f.path!.isNotEmpty && f.errorMessage == null).toList();
         final single = !hasError && completedFiles.length == 1 ? completedFiles.single : null;
         final image = single?.file.fileType == FileType.image;
         receiveAlertActions.completed(session.sessionId, path: single?.path ?? '', image: image);
         await showReceiveNotification(
-          enabled: server.ref.read(backgroundNotificationsProvider),
+          enabled: Platform.isAndroid ? server.ref.read(androidReceiveModeProvider) : server.ref.read(backgroundNotificationsProvider),
           sessionId: session.sessionId,
           kind: hasError ? 'error' : 'done',
           title: hasError
@@ -619,7 +632,7 @@ class ReceiveController {
     if (fileNameMap.isNotEmpty && Platform.isMacOS) {
       unawaited(
         showReceiveNotification(
-          enabled: server.ref.read(backgroundNotificationsProvider),
+          enabled: Platform.isAndroid ? server.ref.read(androidReceiveModeProvider) : server.ref.read(backgroundNotificationsProvider),
           sessionId: session.sessionId,
           kind: 'receiving',
           title: t.settingsTab.general.alertReceiving(alias: session.senderAlias),
@@ -702,7 +715,7 @@ class ReceiveController {
     // From here on, the server isolate receives all accepted files on its own
     // and reports back via upload progress/result events.
     final updatedSession = server.getStateOrNull()?.session;
-    if (updatedSession == null) {
+    if (updatedSession == null || updatedSession.sessionId != session.sessionId || updatedSession.status != SessionStatus.sending) {
       return;
     }
     server.ref

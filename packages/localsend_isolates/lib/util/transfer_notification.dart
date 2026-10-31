@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:localsend_isolates/util/file_size_helper.dart';
 import 'package:localsend_isolates/util/file_speed_helper.dart';
 import 'package:localsend_isolates/util/foreground_service.dart';
@@ -15,6 +17,28 @@ const _minBytesForSpeed = 500 * 1024;
 /// notification shows the sum of everything in flight.
 class TransferNotification {
   TransferNotification._();
+
+  static ({String title, String text, String stopLabel})? _availability;
+
+  static Future<bool> setAvailable({required bool enabled, required String title, required String text, required String stopLabel}) async {
+    final previous = _availability;
+    _availability = enabled ? (title: title, text: text, stopLabel: stopLabel) : null;
+    ForegroundService.configureAvailability(enabled: enabled, stopLabel: stopLabel);
+    if (enabled) {
+      final started = await ForegroundService.start(channelName: title, title: _title(), text: _text());
+      if (!started) {
+        _availability = previous;
+        ForegroundService.configureAvailability(enabled: previous != null, stopLabel: previous?.stopLabel ?? stopLabel);
+        return false;
+      }
+      ForegroundService.updateNotification(title: _title(), text: _text());
+    } else if (_transfers.isEmpty && _availability == null) {
+      ForegroundService.stop();
+    } else {
+      ForegroundService.updateNotification(title: _title(), text: _text());
+    }
+    return true;
+  }
 
   static final _transfers = <String, _Transfer>{};
   static NotificationStrings? _strings;
@@ -46,10 +70,12 @@ class TransferNotification {
     _transfers[sessionId] = _Transfer(receiving: receiving);
 
     if (isFirst) {
-      ForegroundService.start(
-        channelName: _requiredStrings.titleReceiving,
-        title: _title(),
-        text: _text(),
+      unawaited(
+        ForegroundService.start(
+          channelName: _requiredStrings.titleReceiving,
+          title: _title(),
+          text: _text(),
+        ),
       );
     }
   }
@@ -81,10 +107,11 @@ class TransferNotification {
       return;
     }
 
-    if (_transfers.isEmpty) {
+    if (_transfers.isEmpty && _availability == null) {
       ForegroundService.stop();
     } else {
-      ForegroundService.updateNotification(title: _title(), text: _text());
+      // Ownership changes must not be dropped by the transfer-progress throttle.
+      ForegroundService.updateNotification(title: _title(), text: _text(), force: true);
     }
   }
 
@@ -112,6 +139,7 @@ class TransferNotification {
   }
 
   static String _title() {
+    if (_transfers.isEmpty && _availability != null) return _availability!.title;
     final receiving = _transfers.values.any((transfer) => transfer.receiving);
     final sending = _transfers.values.any((transfer) => !transfer.receiving);
     final strings = _requiredStrings;
@@ -126,6 +154,7 @@ class TransferNotification {
   /// 42% (1.2 MB / 3.4 MB)
   /// 0:45 · 1.2 MB/s
   static String _text() {
+    if (_transfers.isEmpty && _availability != null) return _availability!.text;
     int currentBytes = 0;
     int totalBytes = 0;
     int? speedInBytes;

@@ -140,3 +140,6 @@ Slang, source files in `app/assets/i18n/` (`<locale>.json` plus `_missing_transl
 ## Release notes
 
 `app/pubspec.yaml`'s version must match `#define MyAppVersion` in `support/scripts/compile_windows_exe-inno.iss` and the `version` in `cli/Cargo.toml` (the CLI prints it in its start banner) — CI fails on a mismatch. Platform build commands and release steps are documented in `README.md` ("Building") and `CONTRIBUTING.md` ("Release").
+## Personal Pixel delivery
+
+Send files to the owner's Pixel 9 Pro through LocalSend, including APKs. Verify the live receiver rather than using a stale duplicate device entry. See `docs/ANDROID_BACKGROUND_RECEIVE.md` for the transfer procedure; completed transfer does not establish that an APK was installed.

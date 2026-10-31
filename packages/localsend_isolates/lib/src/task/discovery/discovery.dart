@@ -26,6 +26,8 @@ class DiscoveryService {
   RsDiscovery? _discovery;
   Completer<void> _retryCompleter = Completer();
   bool _listening = false;
+  bool _paused = false;
+  Completer<void>? _pauseCompleted;
 
   /// Whether the current discovery was stopped by [restartListener], as
   /// opposed to stopping itself because the multicast sockets failed.
@@ -57,6 +59,12 @@ class DiscoveryService {
     });
 
     while (true) {
+      if (_paused) {
+        _retryCompleter = Completer();
+        if (_pauseCompleted?.isCompleted == false) _pauseCompleted!.complete();
+        await _retryCompleter.future;
+        continue;
+      }
       final syncState = _ref.read(syncProvider);
 
       final RsDiscovery discovery;
@@ -79,6 +87,7 @@ class DiscoveryService {
         );
       } catch (e) {
         _logger.warning('Could not start discovery (group: ${syncState.multicastGroup}, port: ${syncState.port})', e);
+        if (_paused) continue;
         // Wait for the next restart request instead of hot-looping
         _retryCompleter = Completer();
         await _retryCompleter.future;
@@ -95,6 +104,11 @@ class DiscoveryService {
       }
 
       _discovery = discovery;
+      if (_paused) {
+        await discovery.stop();
+        _discovery = null;
+        continue;
+      }
 
       // Tell everyone in the network that I am online.
       unawaited(discovery.announce());
@@ -106,6 +120,7 @@ class DiscoveryService {
       }
 
       _discovery = null;
+      if (_paused) continue;
 
       if (_restartRequested) {
         // The stream ended because [restartListener] stopped the discovery.
@@ -122,7 +137,28 @@ class DiscoveryService {
   }
 
   /// Restarts the discovery, e.g. after the port or the network settings changed.
-  void restartListener() {
+  Future<void> pauseListener() async {
+    if (!_listening) return;
+    if (_paused) return _pauseCompleted?.future;
+    _paused = true;
+    _pauseCompleted = Completer();
+    final discovery = _discovery;
+    if (discovery != null) {
+      await discovery.stop();
+    } else if (!_retryCompleter.isCompleted) {
+      _retryCompleter.complete();
+    }
+    await _pauseCompleted!.future;
+  }
+
+  void restartListener({bool resume = false}) {
+    if (_paused) {
+      // Ambient network changes must not undo a shutdown while no UI/service owns the engine.
+      if (!resume) return;
+      _paused = false;
+      if (!_retryCompleter.isCompleted) _retryCompleter.complete();
+      return;
+    }
     final discovery = _discovery;
     if (discovery != null) {
       // Ends the listen stream, which makes [startListener] rebind.

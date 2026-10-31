@@ -872,6 +872,18 @@ class _Translations$settingsTab$general$es_ES extends Translations$settingsTab$g
   @override
   String get minimizeToTray => 'Cerrar: Minimizar ventana';
   @override
+  String get androidReceiveMode => 'Recibir en segundo plano';
+  @override
+  String get androidReceiveHint =>
+      'Sigue recibiendo aunque quites la app de recientes. Ábrela tras reiniciar o forzar su detención. Con la pantalla apagada, pon la batería en «Sin restricciones».';
+  @override
+  String get androidReceiveReady => 'Escuchando en tu red local';
+  @override
+  String get androidReceiveStop => 'Dejar de recibir';
+  @override
+  String get androidReceiveUnavailable =>
+      'No se pudo activar la recepción. Permite las notificaciones y el acceso a la red local, y comprueba que el servidor está activo.';
+  @override
   String get backgroundNotifications => 'Avisos flotantes al recibir';
   @override
   String get backgroundNotificationsHint => 'Acciones rápidas mientras trabajas. Al cerrar la ventana, LocalSend sigue en la barra de menús.';

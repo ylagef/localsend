@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/receive_history_page.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/background_notifications_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/util/native/image_clipboard.dart';
@@ -14,7 +17,7 @@ import 'package:routerino/routerino.dart';
 /// Notification clicks only reveal UI. They never accept or decline a session.
 Future<void> openReceiveNotification(String sessionId, String kind) async {
   if (kind != 'pending' && kind != 'done') return;
-  await showFromTray();
+  if (!Platform.isAndroid) await showFromTray();
   // A click may have launched the app; wait for its Navigator to exist.
   await WidgetsBinding.instance.endOfFrame;
   final status = RefenaScope.defaultRef.read(serverProvider)?.session?.status;
@@ -32,7 +35,9 @@ bool shouldOpenReceiveHistory({required String kind, required SessionStatus? sta
 
 Future<Map<String, dynamic>> handleReceiveAlertAction(String sessionId, String kind, String action) async {
   try {
-    if (!RefenaScope.defaultRef.read(backgroundNotificationsProvider)) {
+    if (!(Platform.isAndroid
+        ? RefenaScope.defaultRef.read(androidReceiveModeProvider)
+        : RefenaScope.defaultRef.read(backgroundNotificationsProvider))) {
       return {'success': false, 'message': t.settingsTab.general.alertUnavailable};
     }
     final success = await receiveAlertActions.perform(

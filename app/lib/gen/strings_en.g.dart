@@ -1091,6 +1091,23 @@ class Translations$settingsTab$general$en {
   /// en: 'Minimize to the System Tray/Menu Bar when closing'
   String get minimizeToTray => 'Minimize to the System Tray/Menu Bar when closing';
 
+  /// en: 'Receive in background'
+  String get androidReceiveMode => 'Receive in background';
+
+  /// en: 'Keep receiving even after removing the app from recent apps. Open it after restarting or force-stopping it. With the screen off, set battery use to Unrestricted.'
+  String get androidReceiveHint =>
+      'Keep receiving even after removing the app from recent apps. Open it after restarting or force-stopping it. With the screen off, set battery use to Unrestricted.';
+
+  /// en: 'Listening on your local network'
+  String get androidReceiveReady => 'Listening on your local network';
+
+  /// en: 'Stop receiving'
+  String get androidReceiveStop => 'Stop receiving';
+
+  /// en: 'Could not enable reception. Allow notifications and local network access, and check that the server is running.'
+  String get androidReceiveUnavailable =>
+      'Could not enable reception. Allow notifications and local network access, and check that the server is running.';
+
   /// en: 'Floating receive alerts'
   String get backgroundNotifications => 'Floating receive alerts';
 

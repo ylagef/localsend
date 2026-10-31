@@ -11,6 +11,7 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/whats_new_page.dart';
+import 'package:localsend_app/provider/android_receive_mode_provider.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
@@ -35,6 +36,7 @@ import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/util/native/device_info_helper.dart';
 import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/native/receive_notifications.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
 import 'package:localsend_app/util/notification_strings.dart';
 import 'package:localsend_app/util/receive_notification_navigation.dart';
@@ -200,6 +202,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   await updateSystemOverlayStyle(context);
 
   if (checkPlatform([TargetPlatform.android])) {
+    if (appStart) {
+      setupAndroidReceiveNotifications(onOpen: openReceiveNotification, onAction: handleReceiveAlertAction);
+      listenAndroidReceiveMode(ref);
+    }
     // On some TVs, requesting a high refresh rate can trigger HDMI resync and blank the display when entering or leaving the app.
     // https://github.com/localsend/localsend/issues/3452
     if (!ref.read(tvProvider)) {
@@ -227,6 +233,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     if (context.mounted) {
       context.showSnackBar(e.toString());
     }
+  }
+
+  if (Platform.isAndroid) {
+    await ref.notifier(androidReceiveModeProvider).restore();
   }
 
   try {

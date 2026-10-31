@@ -188,6 +188,28 @@ class IsolateDiscoveryRestartAction extends ReduxAction<IsolateController, Paren
   }
 }
 
+/// Resumes a paused discovery subscription when an Activity reattaches during engine cleanup.
+class IsolateDiscoveryResumeAction extends ReduxAction<IsolateController, ParentIsolateState> {
+  @override
+  ParentIsolateState reduce() {
+    state.discovery?.sendToIsolate(
+      SendToIsolateData(syncState: null, data: IsolateTask(data: DiscoveryResumeTask())),
+    );
+    return state;
+  }
+}
+
+/// Pauses discovery and awaits native socket closure before an engine is released.
+class IsolateDiscoveryPauseAction extends AsyncReduxAction<IsolateController, ParentIsolateState> {
+  @override
+  Future<ParentIsolateState> reduce() async {
+    final connection = state.discovery;
+    if (connection == null) return state;
+    await connection.sendWrappedTaskAndListenStream(task: DiscoveryPauseTask()).drain<void>();
+    return state;
+  }
+}
+
 /// Feeds a device confirmed outside of the discovery into the discovery store,
 /// e.g. one that registered with this device's HTTP server. The device comes
 /// back on the [IsolateDiscoveryListenAction] stream.

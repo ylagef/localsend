@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:localsend_isolates/util/future_queue.dart';
@@ -22,6 +24,27 @@ class ForegroundService {
   );
 
   static bool _initialized = false;
+  static String? _stopLabel;
+
+  /// The app owns the availability setting; the service only forwards its stop action.
+  static void configureAvailability({required bool enabled, required String stopLabel}) {
+    _stopLabel = enabled ? stopLabel : null;
+    _lastUpdate = null;
+    _lastTitle = null;
+    _lastText = null;
+  }
+
+  static void listen(void Function(Object) callback) {
+    if (!_isSupported) return;
+    FlutterForegroundTask.initCommunicationPort();
+    FlutterForegroundTask.addTaskDataCallback(callback);
+  }
+
+  static Future<bool> get isActuallyRunning => FlutterForegroundTask.isRunningService;
+
+  static List<NotificationButton> get _buttons => [
+    if (_stopLabel != null) NotificationButton(id: 'stopReceiving', text: _stopLabel!),
+  ];
   static bool _running = false;
   static DateTime? _lastUpdate;
   static String? _lastTitle;
@@ -48,42 +71,52 @@ class ForegroundService {
   ///
   /// [channelName] is shown in the Android notification settings and is only read the first time
   /// the service starts, because the notification channel is created once per app installation.
-  static void start({
+  static Future<bool> start({
     required String channelName,
     required String title,
     required String text,
   }) {
-    if (!_isSupported) {
-      return;
-    }
+    if (!_isSupported) return Future.value(false);
+    final completion = Completer<bool>();
 
     _lastUpdate = null;
     _lastTitle = null;
     _lastText = null;
     _queue.add(() async {
-      if (_running) {
-        return;
+      try {
+        if (_running && await FlutterForegroundTask.isRunningService) {
+          completion.complete(true);
+          return;
+        }
+        _running = false;
+        await _requestNotificationPermission();
+        _init(channelName: channelName);
+
+        final result = await FlutterForegroundTask.startService(
+          serviceId: _serviceId,
+          serviceTypes: const [ForegroundServiceTypes.connectedDevice],
+          callback: foregroundServiceEntryPoint,
+          notificationTitle: title,
+          notificationText: text,
+          notificationButtons: _buttons,
+        );
+
+        if (result is ServiceRequestFailure) {
+          // Most likely the app was in the background (Android 12+ forbids starting a foreground
+          // service from there). Whatever the service was meant to protect is unaffected.
+          _logger.warning('Could not start the foreground service', result.error);
+          completion.complete(false);
+          return;
+        }
+
+        _running = true;
+        completion.complete(true);
+      } catch (error, stack) {
+        _logger.warning('Could not start the foreground service', error, stack);
+        completion.complete(false);
       }
-
-      await _requestNotificationPermission();
-      _init(channelName: channelName);
-
-      final result = await FlutterForegroundTask.startService(
-        serviceId: _serviceId,
-        serviceTypes: const [ForegroundServiceTypes.dataSync],
-        notificationTitle: title,
-        notificationText: text,
-      );
-
-      if (result is ServiceRequestFailure) {
-        // Most likely the app was in the background (Android 12+ forbids starting a foreground
-        // service from there). Whatever the service was meant to protect is unaffected.
-        _logger.warning('Could not start the foreground service', result.error);
-        return;
-      }
-
-      _running = true;
     });
+    return completion.future;
   }
 
   /// Updates the notification.
@@ -91,14 +124,14 @@ class ForegroundService {
   ///
   /// The [title] can change while the service runs, because what the service is keeping alive
   /// may change without it ever stopping.
-  static void updateNotification({required String title, required String text}) {
+  static void updateNotification({required String title, required String text, bool force = false}) {
     if (!_isSupported) {
       return;
     }
 
     final now = DateTime.now();
     final lastUpdate = _lastUpdate;
-    if (lastUpdate != null && now.difference(lastUpdate) < _updateInterval) {
+    if (!force && lastUpdate != null && now.difference(lastUpdate) < _updateInterval) {
       return;
     }
     _lastUpdate = now;
@@ -114,7 +147,7 @@ class ForegroundService {
         return;
       }
 
-      final result = await FlutterForegroundTask.updateService(notificationTitle: title, notificationText: text);
+      final result = await FlutterForegroundTask.updateService(notificationTitle: title, notificationText: text, notificationButtons: _buttons);
       if (result is ServiceRequestFailure) {
         _logger.warning('Could not update the foreground service', result.error);
       }
@@ -164,6 +197,10 @@ class ForegroundService {
       foregroundTaskOptions: ForegroundTaskOptions(
         // The work happens in the other isolates, so the service has nothing to do on its own.
         eventAction: ForegroundTaskEventAction.nothing(),
+        // The plugin option stops on Activity.onPause, including Home and screen-off.
+        // AndroidManifest.xml keeps the service running when the task is removed.
+        // Leave stopWithTask unset so the plugin falls back to the manifest.
+        allowAutoRestart: false,
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: false,
         allowWakeLock: true,
@@ -188,4 +225,31 @@ class ForegroundService {
       _logger.warning('Could not request the notification permission', e);
     }
   }
+}
+
+@pragma('vm:entry-point')
+void foregroundServiceEntryPoint() {
+  FlutterForegroundTask.setTaskHandler(_AvailabilityTaskHandler());
+}
+
+class _AvailabilityTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // A system restart creates only this task engine, not the app's networking engine.
+    // Never advertise a receiver that cannot actually receive.
+    if (starter == TaskStarter.system) await FlutterForegroundTask.stopService();
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {}
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    FlutterForegroundTask.sendDataToMain('serviceStopped');
+  }
+
+  @override
+  void onNotificationPressed() => FlutterForegroundTask.launchApp();
+
+  @override
+  void onNotificationButtonPressed(String id) => FlutterForegroundTask.sendDataToMain(id);
 }

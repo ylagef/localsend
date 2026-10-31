@@ -486,6 +486,12 @@ class PersistenceService {
     await _prefs.setBool(_autoFinish, autoFinish);
   }
 
+  bool isAndroidReceiveMode() => _prefs.getBool('ls_android_receive_mode') ?? false;
+
+  Future<void> setAndroidReceiveMode(bool enabled) async {
+    await _prefs.setBool('ls_android_receive_mode', enabled);
+  }
+
   bool isBackgroundNotifications() => _prefs.getBool(_backgroundNotifications) ?? false;
 
   Future<void> setBackgroundNotifications(bool enabled) async {

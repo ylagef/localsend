@@ -54,9 +54,20 @@
         "repository": "ylagef/localsend",
         "draft": false
       }
+    },
+    "android": {
+      "build": [
+        "bash",
+        "scripts/build-android-personal.sh"
+      ],
+      "artifacts": [
+        "artifacts/LocalSend-Personal-android-arm64.apk"
+      ],
+      "publish": null
     }
   },
   "notes": [
-    "GitHub releases package the retained verified macOS Apple Silicon build and exact committed source. Fork packaging version is independent from the app runtime version. macOS binaries are ad-hoc signed and not notarized; App Store and other platform adapters are unavailable."
+    "GitHub releases package the retained verified macOS Apple Silicon build and exact committed source. Fork packaging version is independent from the app runtime version. macOS binaries are ad-hoc signed and not notarized; App Store and other platform adapters are unavailable.",
+    "Android arm64 APK builds run on GEEKOM with a retained personal key outside the checkout. Replacing the official package requires a compatible signing certificate or a separately approved clean installation. Android runtime name follows fork-version.json through build flags; shared upstream version files remain unchanged."
   ]
 }
