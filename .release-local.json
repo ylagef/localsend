@@ -13,6 +13,14 @@
       "scripts/test-personal-release.py"
     ],
     [
+      "python3",
+      "scripts/test-android-personal.py"
+    ],
+    [
+      "python3",
+      "scripts/test-android-release.py"
+    ],
+    [
       "bash",
       "scripts/check-personal.sh"
     ]
@@ -64,10 +72,28 @@
         "artifacts/LocalSend-Personal-android-arm64.apk"
       ],
       "publish": null
+    },
+    "github-android": {
+      "build": [
+        "python3",
+        "scripts/package-android-release.py"
+      ],
+      "artifacts": [
+        ".release-local/github-android/LocalSend-Personal-source.tar.gz",
+        ".release-local/github-android/LocalSend-Personal-android-arm64.apk",
+        ".release-local/github-android/release-provenance.json",
+        ".release-local/github-android/SHA256SUMS"
+      ],
+      "publish": {
+        "adapter": "github",
+        "repository": "ylagef/localsend",
+        "draft": false
+      }
     }
   },
   "notes": [
     "GitHub releases package the retained verified macOS Apple Silicon build and exact committed source. Fork packaging version is independent from the app runtime version. macOS binaries are ad-hoc signed and not notarized; App Store and other platform adapters are unavailable.",
-    "Android arm64 APK builds run on GEEKOM with a retained personal key outside the checkout. Replacing the official package requires a compatible signing certificate or a separately approved clean installation. Android runtime name follows fork-version.json through build flags; shared upstream version files remain unchanged."
+    "Android arm64 APK builds run on GEEKOM with a retained personal key outside the checkout. Replacing the official package requires a compatible signing certificate or a separately approved clean installation. Android runtime name follows fork-version.json through build flags; shared upstream version files remain unchanged.",
+    "The github-android target publishes the retained verified Android APK and exact committed source. It validates runtime source against the accepted build and allows only explicit release metadata and documentation drift. Release/package version is independent from retained APK versionName/versionCode."
   ]
 }

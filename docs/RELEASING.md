@@ -80,3 +80,11 @@ heavy run --class mac-test --label "LocalSend GitHub release" -- node scripts/re
 ```
 
 A later release must preserve previous output before packaging, supply the actually accepted app/manifest, update its documented runtime/build mapping and use the next fork version. Source-only releases remain available via `build --target source`. GitHub publication does not imply notarization, App Store delivery, another platform build, or local installation. Git-common-directory release manifests and ignored artifacts need their existing local backup custody; they are not pushed with source.
+
+## Android GitHub releases
+
+The `github-android` target publishes the retained, verified arm64 APK without rebuilding it, plus exact committed source, sanitized provenance and SHA-256 checksums. It requires `artifacts/android-personal-delivery.json`, its retained source inventory and the APK signing/package sidecars. The runtime source must match the accepted build; only the explicit release metadata/agent instructions and documentation allowlist may differ. The original build base must be an ancestor of the release commit, and the Flutter submodule must match its committed pin. Artifact tampering, identity drift and unverified signing fail closed.
+
+The release version in `fork-version.json` is publication metadata. Android's versionName/versionCode are read from the retained APK receipt and recorded separately; a publication does not renumber a previously tested APK. This target publishes Android assets only. Previous macOS assets remain associated with their original release. Public provenance excludes local paths, host details, download URLs and signing configuration.
+
+Run the existing release sequence with `build --target github-android` and `publish --target github-android --yes --authorize-publication`. Keep the clean-source checks, exact tag push and remote digest verification. Use LocalSend for an actual transfer to the Pixel; public release availability is a separate outcome.
